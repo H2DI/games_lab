@@ -4,11 +4,16 @@ import warnings
 
 
 class MultiAgent:
-    def __init__(self, game, agent_list):
+    def __init__(self, game, agent_list, track_profile=False):
         self.game = game
         self.agent_list = agent_list
+        self.track_profile = track_profile
+        self.M = len(agent_list)
 
+        assert self.M == self.game.M
         self.t = 0
+
+        self.cumulative_profile = np.zeros(np.shape(self.game.tab)[:-1])
 
     def play(self):
         self.t += 1
@@ -18,10 +23,32 @@ class MultiAgent:
         for n, agent in enumerate(self.agent_list):
             expected_rewards = self.game.compute_exp_payoffs(n, plays)
             agent.update(plays[n], expected_rewards)
+        if self.track_profile:
+            self.cumulative_profile += self.joint_play(self.t)
 
     def play_T_times(self, T):
         for _ in range(T):
             self.play()
+
+    def joint_play(self, t):
+        for n, agent in enumerate(self.agent_list):
+            if n == 0:
+                r = agent.play_history[t - 1]
+            else:
+                r = np.tensordot(r, agent.play_history[t - 1], axes=0)
+        return r
+
+    def empirical_profile(self, t=-1):
+        if t == -1:
+            t = self.t
+        assert t > 0
+        if self.track_profile and t == self.t:
+            return self.cumulative_profile / t
+        else:
+            r = np.zeros(np.shape(self.game.tab)[:-1])
+            for time in range(t):
+                r += self.joint_play(time)
+            return r / t
 
     def sample_from_eq(self, t=-1):
         if t == -1:
