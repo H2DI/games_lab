@@ -103,9 +103,7 @@ class Shapley(NormalFormGame):
 class MatchingPennies(NormalFormGame):
     def __init__(self):
         """
-            From Prediction, Learning, Games Ex 7.2 p.227
-            Counterexample for convergence of fictitious play on zero-sum games
-            Losses are converted to rewards and normalized in [0, 1]
+            No Pure Nash equilibrium
         """
         M = 2
         tab = np.zeros((2, 2, 2))

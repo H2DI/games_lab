@@ -57,9 +57,23 @@ class MultiAgent:
         r = []
         for n, agent in enumerate(self.agent_list):
             K = agent.K
-            print(agent.play_history[t_sample])
             r.append(np.random.choice(K, p=agent.play_history[t_sample]))
         return r
+
+    def check_equilibria(self, dist):
+        """
+            not done
+            returns r such r[n][i, j] is the constraint comparing
+        """
+        assert np.isclose(np.sum(dist), 1)
+        r = []
+        for n, agent in enumerate(self.agent_list):
+            r.append(np.zeros((self.K, self.K)))
+            for i in range(agent.K):
+                for j in range(agent.K):
+                    a = 0
+                    r[n][i, j] = a
+        return
 
 
 class Agent:
@@ -237,4 +251,11 @@ class RandomPlay(Agent):
 
 
 class RegretMatching(Agent):
-    pass
+    def next_play(self):
+        p = np.zeros(self.K)
+        a = self.internal_comps
+
+
+class UniformPlay(Agent):
+    def next_play(self):
+        return np.ones(self.K) / self.K
