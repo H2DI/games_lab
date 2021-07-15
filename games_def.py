@@ -153,3 +153,40 @@ class TestGame1(NormalFormGame):
 
         tab = tab / np.max(tab)
         super().__init__(M, tab)
+
+
+class PartyGame:
+    """
+        The game is M players that can bring up to K guests to a party. The value
+        for each player is a function of the total number of guest.
+    """
+
+    def __init__(self, M, K, values):
+        """
+            values is an (M, K*M) table
+            values[m, i] is the payoff of player m when the total number of guest
+            is i
+        """
+        self.M = M
+        self.K = K
+
+        self.values = values
+
+    def compute_exp_payoffs(self, n, plays):
+        """
+            plays is a tuple of probability distributions over actions
+            returns the vector of expected payoffs for actions of player n
+        """
+        law_of_sum = np.array([1.0])
+        for i, play in enumerate(plays):
+            if i == n:
+                continue
+            else:
+                law_of_sum = np.convolve(law_of_sum, play)
+        r = np.zeros(self.K)
+        for i in range(self.K):
+            u = np.zeros(self.K)
+            u[i] = 1
+            vect = np.convolve(u, law_of_sum)
+            r[i] = np.dot(self.values[n, :], vect)
+        return r

@@ -12,8 +12,15 @@ class MultiAgent:
 
         assert self.M == self.game.M
         self.t = 0
+        if self.track_profile:
+            self.cumulative_profile = np.zeros(np.shape(self.game.tab)[:-1])
 
-        self.cumulative_profile = np.zeros(np.shape(self.game.tab)[:-1])
+    def initialize(self, plays):
+        for n, agent in enumerate(self.agent_list):
+            expected_rewards = self.game.compute_exp_payoffs(n, plays)
+            agent.update(plays[n], expected_rewards)
+        if self.track_profile:
+            self.cumulative_profile += self.joint_play(self.t)
 
     def play(self):
         self.t += 1
@@ -62,7 +69,7 @@ class MultiAgent:
 
     def check_equilibria(self, dist):
         """
-            not done
+            not finished
             returns r such r[n][i, j] is the constraint comparing
         """
         assert np.isclose(np.sum(dist), 1)
@@ -180,7 +187,7 @@ class Hedge(Hedge_a):
 
 class OptimisticHedge(Hedge_a):
     def lr_value(self):
-        return np.power((self.horizon + 1), -1 / 4)
+        return np.power((self.t + 1), -1 / 4)
 
     def next_play(self):
         if not (self.reward_history):
@@ -199,7 +206,7 @@ class BMAlg(Agent):
     def __init__(self, K, horizon=-1, label=""):
         super().__init__(K, horizon=horizon, label=label)
         self.sub_algs = [Hedge_a(K, horizon=horizon) for _ in range(K)]
-        self.last_Q = None
+        self.last_Q = np.eye(self.K)
 
     def next_play(self):
         Q = None
