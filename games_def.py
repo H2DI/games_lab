@@ -82,6 +82,7 @@ class Shapley(NormalFormGame):
         """
             From Prediction, Learning, Games Ex 7.2 p.227
             Counterexample for convergence of fictitious play on zero-sum games
+            ()
             Losses are converted to rewards and normalized in [0, 1]
         """
         M = 2
@@ -95,6 +96,32 @@ class Shapley(NormalFormGame):
         tab[2, 0] = np.array([1, 0])
         tab[2, 1] = np.array([1, 1])
         tab[2, 2] = np.array([0, 1])
+        tab = tab / np.max(tab)
+        tab = 1 - tab
+        super().__init__(M, tab)
+
+
+class Stoltz(NormalFormGame):
+    def __init__(self):
+        """
+            From Gilles Stoltz' thesis, as a counterexample for a case when Hedge
+            with a constant learning rate can suffer large internal regret.
+            If player 1 plays action 0 for the first T/3 rounds, then 1 for the next
+            T/3 rounds, then 2 for the last T/3 rounds, and if Player 2 uses Hedge, then
+            player 3 suffers large internal regret.
+            Losses are converted to rewards and normalized in [0, 1]
+        """
+        M = 2
+        tab = np.zeros((3, 3, 2))
+        tab[0, 0] = np.array([0, 0])
+        tab[0, 1] = np.array([1, 1])
+        tab[0, 2] = np.array([5, 5])
+        tab[1, 0] = np.array([1, 1])
+        tab[1, 1] = np.array([0, 0])
+        tab[1, 2] = np.array([5, 5])
+        tab[2, 0] = np.array([2, 2])
+        tab[2, 1] = np.array([1, 1])
+        tab[2, 2] = np.array([0, 0])
         tab = tab / np.max(tab)
         tab = 1 - tab
         super().__init__(M, tab)

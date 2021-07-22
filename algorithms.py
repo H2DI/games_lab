@@ -155,7 +155,7 @@ class Agent:
                 #     print("p")
                 #     print(p)
                 return p
-            except Warning:
+            except (Warning, np.linalg.LinAlgError) as e:
                 # self.times_war.append(self.t)
                 return np.sum(np.power(Q, 10), axis=1) / self.K
 
@@ -185,7 +185,7 @@ class Hedge(Hedge_a):
         return np.sqrt(np.log(self.K) / (self.horizon + 1))
 
 
-class OptimisticHedge(Hedge_a):
+class OptimisticHedge_a(Hedge_a):
     def lr_value(self):
         return np.power((self.t + 1), -1 / 4)
 
@@ -200,7 +200,12 @@ class OptimisticHedge(Hedge_a):
         return unnormalized_w / np.sum(unnormalized_w)
 
 
-class BMAlg(Agent):
+class OptimisticHedge(OptimisticHedge_a):
+    def lr_value(self):
+        return np.power((self.horizon + 1), -1 / 4)
+
+
+class BMAlg_a(Agent):
     "Swap regret algorithm"
 
     def __init__(self, K, horizon=-1, label=""):
@@ -224,8 +229,97 @@ class BMAlg(Agent):
             alg.update(self.last_Q[:, n], play[n] * rewards)
 
 
+class BMAlg(BMAlg_a):
+    def __init__(self, K, horizon=-1, label=""):
+        super().__init__(K, horizon=horizon, label=label)
+        self.sub_algs = [Hedge(K, horizon=horizon) for _ in range(K)]
+        self.last_Q = np.eye(self.K)
+
+
+class OptimisticBMAlg_a(BMAlg_a):
+    def __init__(self, K, horizon=-1, label=""):
+        super().__init__(K, horizon=horizon, label=label)
+        self.sub_algs = [OptimisticHedge_a(K, horizon=horizon) for _ in range(K)]
+        self.last_Q = np.eye(self.K)
+
+
+class OptimisticBMAlg(BMAlg_a):
+    def __init__(self, K, horizon=-1, label=""):
+        super().__init__(K, horizon=horizon, label=label)
+        self.sub_algs = [OptimisticHedge(K, horizon=horizon) for _ in range(K)]
+        self.last_Q = np.eye(self.K)
+
+
+class OptimisticAdaHedge(Hedge_a):
+    def __init__(self, K, horizon=-1, label=""):
+        super().__init__(K, horizon=horizon, label=label)
+        self.cum_mix_gap = 0
+        self.D = np.log(self.K)
+        self.mix_gaps = []
+        self.current_lr = np.inf
+
+        self.diffs_linfty = []
+        self.diffs_var = []
+
+    def lr_value(self):
+        if len(self.reward_history) < 2:
+            reward_vec = self.reward_history[-1]
+        else:
+            reward_vec = self.reward_history[-1] - self.reward_history[-2]
+        p = self.play_history[-1]
+
+        self.diffs_linfty.append(max(np.square(reward_vec)))
+        self.diffs_var.append(
+            np.dot(p, (np.square(reward_vec - np.dot(p, reward_vec))))
+        )
+
+        def_mix_gap = max(reward_vec) - np.dot(p, reward_vec)
+        if np.isinf(self.current_lr):
+            mix_gap = def_mix_gap
+        else:
+            v_exp = np.exp(self.current_lr * reward_vec)
+            if any(np.isinf(v_exp)):
+                mix_gap = def_mix_gap
+            else:
+                mix_gap = -np.dot(p, reward_vec) + 1 / self.current_lr * np.log(
+                    np.dot(p, v_exp)
+                )
+        self.cum_mix_gap += mix_gap
+        self.mix_gaps.append(mix_gap)
+
+        if np.isclose(self.cum_mix_gap, 0):
+            self.current_lr = np.inf
+        else:
+            self.current_lr = self.D / self.cum_mix_gap
+
+        return self.current_lr
+
+    def next_play(self):
+        if not (self.reward_history):
+            return np.ones(self.K) / self.K
+        else:
+            next_pred = self.reward_history[-1]
+        lr = self.lr_value()
+        if np.isinf(lr):
+            return np.ones(self.K) / self.K
+        logweights = lr * (self.all_cumul_rewards + next_pred)
+        max_logweight = np.max(logweights)
+        unnormalized_w = np.exp(logweights - max_logweight)
+        return unnormalized_w / np.sum(unnormalized_w)
+
+
+class OptimisticBMAdaHedge(BMAlg_a):
+    def __init__(self, K, horizon=-1, label=""):
+        super().__init__(K, horizon=horizon, label=label)
+        self.sub_algs = [OptimisticAdaHedge(K) for _ in range(K)]
+        self.last_Q = np.eye(self.K)
+
+
 class InternalHedge_a(Agent):
-    "Internal regret algorithm"
+    """
+    Internal regret algorithm. Broken.
+
+    """
 
     def lr_value(self):
         return np.sqrt(np.log(self.K * (self.K - 1)) / (self.t + 1))
