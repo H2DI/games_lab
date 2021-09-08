@@ -1,6 +1,24 @@
 import numpy as np
+import math
+import matplotlib.pyplot as plt
 import scipy.linalg
 import warnings
+
+
+def kullback(p, q):
+    """Kullback-Leibler divergence for Bernoulli distributions."""
+    pprime, qprime = np.copy(p), np.copy(q)
+    eps = 1e-15
+
+    K = len(p)
+    for i in range(K):
+        if q[i] < eps:
+            if p[i] < eps:
+                qprime[i] = 1
+                pprime[i] = 1
+            else:
+                return 1e15
+    return np.dot(p, np.log(pprime / qprime))
 
 
 class MultiAgent:
@@ -81,6 +99,81 @@ class MultiAgent:
                     a = 0
                     r[n][i, j] = a
         return
+
+    def print_rewards(self, t_slice=None, log_scale=True, average=False):
+        if t_slice is None:
+            t_slice = range(self.t)
+        if not (average):
+            for agent in self.agent_list:
+                plt.title("Rewards for {}".format(agent.label))
+                for i in range(agent.K):
+                    toplot = [agent.reward_history[t][i] for t in t_slice]
+                    plt.plot(t_slice, toplot, label="Reward[{}]".format(i))
+                plt.legend()
+                if log_scale:
+                    plt.xscale("log")
+                plt.show()
+        else:
+            for agent in self.agent_list:
+                plt.title("Average Rewards for {}".format(agent.label))
+                a = np.cumsum(np.array(agent.reward_history), axis=0)
+                for i in range(agent.K):
+                    b = a[:, i] / np.arange(1, self.t + 2)
+                    # toplot = [b[t] for t in t_slice]
+                    plt.plot(t_slice, b[t_slice], label="Average Reward[{}]".format(i))
+                plt.legend()
+                if log_scale:
+                    plt.xscale("log")
+                plt.show()
+
+    def print_plays(self, t_slice=None, log_scale=True, average=False):
+        if t_slice is None:
+            t_slice = range(self.t)
+        if not (average):
+            for agent in self.agent_list:
+                plt.title("Plays for {}".format(agent.label))
+                for i in range(agent.K):
+                    toplot = [agent.play_history[t][i] for t in t_slice]
+                    plt.plot(t_slice, toplot, label="P[action {}]".format(i))
+                plt.legend()
+                if log_scale:
+                    plt.xscale("log")
+                plt.show()
+        else:
+            for agent in self.agent_list:
+                plt.title("Average Plays for {}".format(agent.label))
+                a = np.cumsum(np.array(agent.play_history), axis=0)
+                for i in range(agent.K):
+                    b = a[:, i] / np.arange(1, self.t + 2)
+                    # toplot = [b[t] for t in t_slice]
+                    plt.plot(t_slice, b[t_slice], label="P[action {}]".format(i))
+                plt.legend()
+                if log_scale:
+                    plt.xscale("log")
+                plt.show()
+
+    def test_independence(self, profile):
+        # Prints P[i, j] and P[i]*[j] to check independence
+        r = []
+        for n, agent in enumerate(self.agent_list):
+            indiv_profile = np.zeros(agent.K)
+            for i in range(agent.K):
+                indiv_profile[i] = np.sum(
+                    profile[
+                        ((slice(None),) * n + (i,) + (slice(None),) * (self.M - n - 1))
+                    ]
+                )
+            r.append(indiv_profile)
+        action_covariance_mat = np.ones(self.game.tab.shape[:-1])
+        for n, agent in enumerate(self.agent_list):
+            for i in range(agent.K):
+                action_covariance_mat[
+                    ((slice(None),) * n + (i,) + (slice(None),) * (self.M - n - 1))
+                ] *= r[n][i]
+
+        print(profile)
+        print(action_covariance_mat)
+        print((profile - action_covariance_mat) / profile)
 
 
 class Agent:
@@ -181,8 +274,15 @@ class Hedge_a(Agent):
 
 
 class Hedge(Hedge_a):
+    def __init__(self, K, default_lr=None, horizon=-1, label=""):
+        super().__init__(K, horizon=horizon, label=label)
+        if default_lr is None:
+            self.default_lr = np.sqrt(np.log(self.K) / (self.horizon + 1))
+        else:
+            self.default_lr = default_lr
+
     def lr_value(self):
-        return np.sqrt(np.log(self.K) / (self.horizon + 1))
+        return self.default_lr
 
 
 class OptimisticHedge_a(Hedge_a):
@@ -243,13 +343,6 @@ class OptimisticBMAlg_a(BMAlg_a):
         self.last_Q = np.eye(self.K)
 
 
-class OptimisticBMAlg(BMAlg_a):
-    def __init__(self, K, horizon=-1, label=""):
-        super().__init__(K, horizon=horizon, label=label)
-        self.sub_algs = [OptimisticHedge(K, horizon=horizon) for _ in range(K)]
-        self.last_Q = np.eye(self.K)
-
-
 class OptimisticAdaHedge(Hedge_a):
     def __init__(self, K, horizon=-1, label=""):
         super().__init__(K, horizon=horizon, label=label)
@@ -258,17 +351,17 @@ class OptimisticAdaHedge(Hedge_a):
         self.mix_gaps = []
         self.current_lr = np.inf
 
-        self.diffs_linfty = []
+        self.diffs_sec_moment = []
         self.diffs_var = []
 
-    def lr_value(self):
+    def update_mix_gaps(self):
         if len(self.reward_history) < 2:
             reward_vec = self.reward_history[-1]
         else:
             reward_vec = self.reward_history[-1] - self.reward_history[-2]
         p = self.play_history[-1]
 
-        self.diffs_linfty.append(max(np.square(reward_vec)))
+        self.diffs_sec_moment.append(np.dot(p, (np.square(reward_vec))))
         self.diffs_var.append(
             np.dot(p, (np.square(reward_vec - np.dot(p, reward_vec))))
         )
@@ -287,19 +380,23 @@ class OptimisticAdaHedge(Hedge_a):
         self.cum_mix_gap += mix_gap
         self.mix_gaps.append(mix_gap)
 
+    def lr_value(self):
         if np.isclose(self.cum_mix_gap, 0):
             self.current_lr = np.inf
         else:
             self.current_lr = self.D / self.cum_mix_gap
-
         return self.current_lr
 
-    def next_play(self):
+    def next_play(self, forced_lr=None):
         if not (self.reward_history):
             return np.ones(self.K) / self.K
         else:
             next_pred = self.reward_history[-1]
-        lr = self.lr_value()
+        if forced_lr is not None:
+            lr = forced_lr
+            self.current_lr = forced_lr
+        else:
+            lr = self.lr_value()
         if np.isinf(lr):
             return np.ones(self.K) / self.K
         logweights = lr * (self.all_cumul_rewards + next_pred)
@@ -307,12 +404,64 @@ class OptimisticAdaHedge(Hedge_a):
         unnormalized_w = np.exp(logweights - max_logweight)
         return unnormalized_w / np.sum(unnormalized_w)
 
+    def update(self, play, rewards):
+        super().update(play, rewards)
+        self.update_mix_gaps()
+
+    def plot_regret_bound(self, kl=True):
+        r = []
+        cum_mix_gaps = np.cumsum(self.mix_gaps)
+        for t in range(1, self.t - 1):
+            pt, ptplus = self.play_history[t], self.play_history[t + 1]
+            ft, ftminus = self.reward_history[t], self.reward_history[t - 1]
+            if kl:
+                a = np.dot(pt - ptplus, ftminus - ft) - cum_mix_gaps[t] / np.log(
+                    self.K
+                ) * kullback(ptplus, pt)
+            else:
+                a = np.dot(pt - ptplus, ftminus - ft) - cum_mix_gaps[t] / np.log(
+                    self.K
+                ) * np.sum(np.abs(ptplus - pt) ** 2 / 2)
+            r.append(a)
+        plt.plot(
+            range(1, self.t - 1), cum_mix_gaps[:-1] + np.cumsum(r), label=self.label
+        )
+
 
 class OptimisticBMAdaHedge(BMAlg_a):
     def __init__(self, K, horizon=-1, label=""):
         super().__init__(K, horizon=horizon, label=label)
         self.sub_algs = [OptimisticAdaHedge(K) for _ in range(K)]
         self.last_Q = np.eye(self.K)
+
+
+class RoughOptimisticBM(BMAlg_a):
+    def __init__(self, K, horizon=-1, label=""):
+        super().__init__(K, horizon=horizon, label=label)
+        self.global_eta = np.inf
+        self.global_cum_mix_gap = 0
+        self.sub_algs = [OptimisticAdaHedge(K) for _ in range(K)]
+        self.last_Q = np.eye(self.K)
+
+    def set_global_eta(self):
+        self.global_cum_mix_gap = 0
+        for alg in self.sub_algs:
+            self.global_cum_mix_gap += alg.cum_mix_gap
+        self.global_eta = self.K * np.log(self.K) / self.global_cum_mix_gap
+
+    def next_play(self):
+        Q = None
+        for alg in self.sub_algs:
+            if Q is None:
+                Q = np.transpose([alg.next_play(forced_lr=self.global_eta)])
+            else:
+                Q = np.hstack((Q, np.transpose([alg.next_play()])))
+        self.last_Q = Q
+        return self.fixed_point(Q)
+
+    def update(self, play, rewards):
+        super().update(play, rewards)
+        self.set_global_eta()
 
 
 class InternalHedge_a(Agent):

@@ -58,6 +58,19 @@ class Chicken(NormalFormGame):
         super().__init__(M, tab)
 
 
+class RandomGame(NormalFormGame):
+    def __init__(self, shape, zerosum=False):
+        self.M = shape[-1]
+        if zerosum:
+            assert self.M == 2
+            assert shape[0] == shape[1]
+            tab = np.random.rand(*shape)
+            tab[:, :, 0] = 1 - tab[:, :, 1]
+            self.tab = tab
+        else:
+            self.tab = np.random.rand(*shape)
+
+
 class RockPaperScissors(NormalFormGame):
     def __init__(self):
         """
@@ -82,7 +95,6 @@ class Shapley(NormalFormGame):
         """
             From Prediction, Learning, Games Ex 7.2 p.227
             Counterexample for convergence of fictitious play on zero-sum games
-            ()
             Losses are converted to rewards and normalized in [0, 1]
         """
         M = 2
@@ -124,6 +136,20 @@ class Stoltz(NormalFormGame):
         tab[2, 2] = np.array([0, 0])
         tab = tab / np.max(tab)
         tab = 1 - tab
+        super().__init__(M, tab)
+
+
+class Coordination(NormalFormGame):
+    def __init__(self):
+        """
+            No Pure Nash equilibrium
+        """
+        M = 2
+        tab = np.zeros((2, 2, 2))
+        tab[0, 0] = np.array([1, 1])
+        tab[0, 1] = np.array([0, 0])
+        tab[1, 0] = np.array([0, 0])
+        tab[1, 1] = np.array([1, 1])
         super().__init__(M, tab)
 
 
