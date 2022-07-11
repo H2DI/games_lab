@@ -8,3 +8,7 @@ cachedir
 *.pkl
 script_*
 notebooks/loc_*
+*.ipynb
+*.ipynb
+Notebooks/.ipynb_checkpoints/loc_repeated_games_examples-checkpoint.ipynb
+Notebooks/repeated_games_examples.ipynb

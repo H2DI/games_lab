@@ -85,21 +85,6 @@ class MultiAgent:
             r.append(np.random.choice(K, p=agent.play_history[t_sample]))
         return r
 
-    def check_equilibria(self, dist):
-        """
-            not finished
-            returns r such r[n][i, j] is the constraint comparing
-        """
-        assert np.isclose(np.sum(dist), 1)
-        r = []
-        for n, agent in enumerate(self.agent_list):
-            r.append(np.zeros((self.K, self.K)))
-            for i in range(agent.K):
-                for j in range(agent.K):
-                    a = 0
-                    r[n][i, j] = a
-        return
-
     def print_rewards(self, t_slice=None, log_scale=True, average=False):
         if t_slice is None:
             t_slice = range(self.t)
@@ -202,8 +187,8 @@ class Agent:
 
     def update(self, play, rewards):
         """
-            play is a probability vector (aka a mixed strategy)
-            rewards is a vector of floats
+        play is a probability vector (aka a mixed strategy)
+        rewards is a vector of floats
         """
         self.t += 1
         self.play_history.append(play)
@@ -227,30 +212,17 @@ class Agent:
 
     def fixed_point(self, Q):
         """
-            Computes the probability fixed point of a stochastic matrix
+        Computes the probability fixed point of a stochastic matrix
         """
-        K = len(Q)
-        X = np.vstack((np.eye(K) - Q, np.ones(K)))
-        b = np.zeros(K + 1)
-        b[K] = 1
-
-        v = np.matmul(np.transpose(X), X)
-        btilde = np.matmul(np.transpose(X), b)
-
+        K = self.K
         with warnings.catch_warnings():
             warnings.filterwarnings("error")
             try:
-                p = scipy.linalg.solve(v, btilde)
-                # if any(p < 0) or any(p > 1) or not (np.isclose(np.sum(p), 1)):
-                #     print("Standard solve: ")
-                #     print("Q")
-                #     print(Q)
-                #     print("p")
-                #     print(p)
-                return p
+                A = np.dot(np.transpose(np.eye(K) - Q), np.eye(K) - Q) + np.ones((K, K))
+                return np.dot(np.linalg.inv(A), np.ones((K, 1)))
             except (Warning, np.linalg.LinAlgError) as e:
                 # self.times_war.append(self.t)
-                return np.sum(np.power(Q, 10), axis=1) / self.K
+                return np.dot(np.power(Q, 10), np.ones((K, 1))) / self.K
 
 
 class FTL(Agent):
@@ -301,8 +273,15 @@ class OptimisticHedge_a(Hedge_a):
 
 
 class OptimisticHedge(OptimisticHedge_a):
+    def __init__(self, K, default_lr=None, horizon=-1, label=""):
+        super().__init__(K, horizon=horizon, label=label)
+        if default_lr is None:
+            self.default_lr = np.power((self.horizon + 1), -1 / 4)
+        else:
+            self.default_lr = default_lr
+
     def lr_value(self):
-        return np.power((self.horizon + 1), -1 / 4)
+        return self.default_lr
 
 
 class BMAlg_a(Agent):
@@ -436,17 +415,20 @@ class OptimisticBMAdaHedge(BMAlg_a):
 
 
 class RoughOptimisticBM(BMAlg_a):
-    def __init__(self, K, horizon=-1, label=""):
+    def __init__(self, K, horizon=-1, label="", verbose=False):
         super().__init__(K, horizon=horizon, label=label)
         self.global_eta = np.inf
         self.global_cum_mix_gap = 0
+        self.all_global_cum_mix_gap = []
         self.sub_algs = [OptimisticAdaHedge(K) for _ in range(K)]
         self.last_Q = np.eye(self.K)
+        self.verbose = verbose
 
     def set_global_eta(self):
         self.global_cum_mix_gap = 0
         for alg in self.sub_algs:
             self.global_cum_mix_gap += alg.cum_mix_gap
+        self.all_global_cum_mix_gap.append(self.global_cum_mix_gap)
         self.global_eta = self.K * np.log(self.K) / self.global_cum_mix_gap
 
     def next_play(self):
@@ -456,6 +438,18 @@ class RoughOptimisticBM(BMAlg_a):
                 Q = np.transpose([alg.next_play(forced_lr=self.global_eta)])
             else:
                 Q = np.hstack((Q, np.transpose([alg.next_play()])))
+
+        if self.verbose:
+            print(self.label)
+            # print(Q)
+            K = self.K
+            print(
+                "det :",
+                np.linalg.det(
+                    np.matmul(np.transpose(np.eye(K) - Q), (np.eye(K) - Q))
+                    + np.ones((K, K))
+                ),
+            )
         self.last_Q = Q
         return self.fixed_point(Q)
 
